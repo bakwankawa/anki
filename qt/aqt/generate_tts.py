@@ -25,7 +25,6 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -165,8 +164,7 @@ class GenerateTtsDialog(QDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         qconnect(buttons.accepted, self._on_accept)
         qconnect(buttons.rejected, self.reject)
