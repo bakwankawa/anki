@@ -1,3 +1,6 @@
+# Copyright: Ankitects Pty Ltd and contributors
+# License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
+
 """Batch TTS audio generation using Google Chirp 3 HD."""
 
 from __future__ import annotations
