@@ -6,9 +6,27 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
+from dataclasses import dataclass
 
 from google.api_core.client_options import ClientOptions
 from google.cloud import texttospeech
+
+from aqt import mw
+from aqt.qt import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    qconnect,
+)
+from aqt.utils import showWarning
 
 VOICE_NAME = "en-US-Chirp3-HD-Achernar"
 LANGUAGE_CODE = "en-US"
@@ -45,3 +63,138 @@ def tts_filename(text: str) -> str:
     """Deterministic filename for a given text: tts_{md5}.mp3"""
     md5 = hashlib.md5(text.encode("utf-8")).hexdigest()
     return f"tts_{md5}.mp3"
+
+
+@dataclass
+class GenerateTtsConfig:
+    source_field: str
+    dest_field: str
+    api_key: str
+    skip_existing: bool
+
+
+def _load_api_key() -> str:
+    """Load saved API key from profile."""
+    conf = mw.pm.profile.get("generateTts", {})
+    return conf.get("apiKey", "")
+
+
+def _save_api_key(key: str) -> None:
+    """Persist API key to profile."""
+    conf = mw.pm.profile.get("generateTts", {})
+    conf["apiKey"] = key
+    mw.pm.profile["generateTts"] = conf
+    mw.pm.save()
+
+
+def _load_field_prefs(note_type_name: str) -> tuple[str, str]:
+    """Load last-used source/dest field names for a note type."""
+    conf = mw.pm.profile.get("generateTts", {})
+    fields = conf.get("fields", {})
+    prefs = fields.get(note_type_name, {})
+    return prefs.get("source", ""), prefs.get("dest", "")
+
+
+def _save_field_prefs(note_type_name: str, source: str, dest: str) -> None:
+    """Persist last-used field names for a note type."""
+    conf = mw.pm.profile.get("generateTts", {})
+    fields = conf.get("fields", {})
+    fields[note_type_name] = {"source": source, "dest": dest}
+    conf["fields"] = fields
+    mw.pm.profile["generateTts"] = conf
+    mw.pm.save()
+
+
+class GenerateTtsDialog(QDialog):
+    """Dialog for configuring batch TTS generation."""
+
+    def __init__(self, field_names: list[str], note_type_name: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Generate Audio")
+        self.setMinimumWidth(400)
+        self._field_names = field_names
+        self._note_type_name = note_type_name
+        self._config: GenerateTtsConfig | None = None
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout()
+        form = QFormLayout()
+
+        # Source field
+        self._source_combo = QComboBox()
+        self._source_combo.addItems(self._field_names)
+        form.addRow("Source field:", self._source_combo)
+
+        # Destination field
+        self._dest_combo = QComboBox()
+        self._dest_combo.addItems(self._field_names)
+        form.addRow("Destination field:", self._dest_combo)
+
+        # Restore last-used fields
+        saved_source, saved_dest = _load_field_prefs(self._note_type_name)
+        if saved_source in self._field_names:
+            self._source_combo.setCurrentText(saved_source)
+        if saved_dest in self._field_names:
+            self._dest_combo.setCurrentText(saved_dest)
+
+        # API key
+        self._api_key_edit = QLineEdit()
+        self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._api_key_edit.setText(_load_api_key())
+        self._api_key_edit.setPlaceholderText("Google Cloud API key")
+
+        api_key_row = QVBoxLayout()
+        api_key_row.addWidget(self._api_key_edit)
+        self._show_key_btn = QPushButton("Show")
+        qconnect(self._show_key_btn.clicked, self._toggle_key_visibility)
+        api_key_row.addWidget(self._show_key_btn)
+        form.addRow("API key:", api_key_row)
+
+        # Skip existing
+        self._skip_existing = QCheckBox("Skip cards that already have audio")
+        self._skip_existing.setChecked(True)
+        form.addRow(self._skip_existing)
+
+        layout.addLayout(form)
+
+        # Buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        qconnect(buttons.accepted, self._on_accept)
+        qconnect(buttons.rejected, self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+    def _toggle_key_visibility(self) -> None:
+        if self._api_key_edit.echoMode() == QLineEdit.EchoMode.Password:
+            self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Normal)
+            self._show_key_btn.setText("Hide")
+        else:
+            self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            self._show_key_btn.setText("Show")
+
+    def _on_accept(self) -> None:
+        api_key = self._api_key_edit.text().strip()
+        if not api_key:
+            showWarning("Please enter a Google Cloud API key.")
+            return
+        source = self._source_combo.currentText()
+        dest = self._dest_combo.currentText()
+
+        _save_api_key(api_key)
+        _save_field_prefs(self._note_type_name, source, dest)
+
+        self._config = GenerateTtsConfig(
+            source_field=source,
+            dest_field=dest,
+            api_key=api_key,
+            skip_existing=self._skip_existing.isChecked(),
+        )
+        self.accept()
+
+    def get_config(self) -> GenerateTtsConfig | None:
+        return self._config
