@@ -17,6 +17,7 @@ import aqt.browser
 import aqt.editor
 import aqt.forms
 import aqt.operations
+from aqt.generate_tts import init_generate_tts
 from anki._legacy import deprecated
 from anki.cards import Card, CardId
 from anki.collection import Collection, Config, OpChanges, SearchNode
@@ -394,6 +395,7 @@ class Browser(QMainWindow):
         self.pgDownCut = QShortcut(QKeySequence("Shift+End"), self)
         qconnect(self.pgDownCut.activated, self.onLastCard)
 
+        init_generate_tts(self)
         # add-on hook
         gui_hooks.browser_menus_did_init(self)
         self.mw.maybeHideAccelerators(self)

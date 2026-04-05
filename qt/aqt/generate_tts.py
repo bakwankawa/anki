@@ -19,6 +19,7 @@ from anki.utils import strip_html
 from aqt import mw
 from aqt.operations import QueryOp
 from aqt.qt import (
+    QAction,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -271,3 +272,52 @@ def _generate_for_notes(
         result.generated += 1
 
     return result
+
+
+def _on_generate_audio(browser) -> None:
+    """Handler for the Generate Audio menu action."""
+    note_ids = browser.selected_notes()
+    if not note_ids:
+        showWarning("Please select one or more cards first.")
+        return
+
+    # Get field names from the first selected note
+    note = mw.col.get_note(note_ids[0])
+    note_type = note.note_type()
+    field_names = [f["name"] for f in note_type["flds"]]
+    note_type_name = note_type["name"]
+
+    dialog = GenerateTtsDialog(field_names, note_type_name, parent=browser)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+
+    config = dialog.get_config()
+    if config is None:
+        return
+
+    def on_success(result: GenerationResult) -> None:
+        parts = [f"Generated: {result.generated}", f"Skipped: {result.skipped}"]
+        if result.errors:
+            parts.append(f"Errors: {len(result.errors)}")
+            error_detail = "\n".join(result.errors[:20])
+            showInfo(
+                f"TTS generation complete.\n\n"
+                f"{', '.join(parts)}\n\n"
+                f"Errors:\n{error_detail}"
+            )
+        else:
+            tooltip(f"TTS done — {', '.join(parts)}", period=3000)
+
+    QueryOp(
+        parent=browser,
+        op=lambda col: _generate_for_notes(col, list(note_ids), config),
+        success=on_success,
+    ).with_progress(label="Generating audio...").run_in_background()
+
+
+def init_generate_tts(browser) -> None:
+    """Add 'Generate Audio...' to the browser Edit menu."""
+    action = QAction("Generate Audio...", browser)
+    qconnect(action.triggered, lambda: _on_generate_audio(browser))
+    browser.form.menuEdit.addSeparator()
+    browser.form.menuEdit.addAction(action)
