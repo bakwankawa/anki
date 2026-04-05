@@ -13,7 +13,11 @@ from dataclasses import dataclass
 from google.api_core.client_options import ClientOptions
 from google.cloud import texttospeech
 
+from anki.collection import Collection
+from anki.notes import NoteId
+from anki.utils import strip_html
 from aqt import mw
+from aqt.operations import QueryOp
 from aqt.qt import (
     QCheckBox,
     QComboBox,
@@ -26,7 +30,7 @@ from aqt.qt import (
     QVBoxLayout,
     qconnect,
 )
-from aqt.utils import showWarning
+from aqt.utils import showInfo, showWarning, tooltip
 
 VOICE_NAME = "en-US-Chirp3-HD-Achernar"
 LANGUAGE_CODE = "en-US"
@@ -198,3 +202,72 @@ class GenerateTtsDialog(QDialog):
 
     def get_config(self) -> GenerateTtsConfig | None:
         return self._config
+
+
+SOUND_TAG_RE = re.compile(r"\[sound:.+?\]")
+
+
+@dataclass
+class GenerationResult:
+    generated: int
+    skipped: int
+    errors: list[str]
+
+
+def _generate_for_notes(
+    col: Collection,
+    note_ids: list[NoteId],
+    config: GenerateTtsConfig,
+) -> GenerationResult:
+    """Run in background thread. Generates TTS audio and updates notes."""
+    result = GenerationResult(generated=0, skipped=0, errors=[])
+
+    for note_id in note_ids:
+        note = col.get_note(note_id)
+        field_names = [f["name"] for f in note.note_type()["flds"]]
+
+        if config.source_field not in field_names:
+            result.errors.append(
+                f"Note {note_id}: missing source field '{config.source_field}'"
+            )
+            continue
+        if config.dest_field not in field_names:
+            result.errors.append(
+                f"Note {note_id}: missing dest field '{config.dest_field}'"
+            )
+            continue
+
+        # Read and clean source text
+        source_html = note[config.source_field]
+        text = strip_html(source_html).strip()
+        if not text:
+            result.skipped += 1
+            continue
+
+        # Check for existing audio in destination field
+        if config.skip_existing and SOUND_TAG_RE.search(note[config.dest_field]):
+            result.skipped += 1
+            continue
+
+        # Compute filename and check if already in media folder
+        filename = tts_filename(text)
+        media_dir = col.media.dir()
+        filepath = os.path.join(media_dir, filename)
+
+        if not os.path.exists(filepath):
+            try:
+                audio_bytes = synthesize_audio(text, config.api_key)
+                col.media.write_data(filename, audio_bytes)
+            except Exception as e:
+                result.errors.append(f"Note {note_id}: {e}")
+                continue
+
+        # Append sound tag to destination field
+        sound_tag = f"[sound:{filename}]"
+        if sound_tag not in note[config.dest_field]:
+            note[config.dest_field] += sound_tag
+            col.update_note(note)
+
+        result.generated += 1
+
+    return result
