@@ -10,8 +10,6 @@ import os
 import re
 from dataclasses import dataclass
 
-from google.cloud import texttospeech
-
 from anki.collection import Collection
 from anki.notes import NoteId
 from anki.utils import strip_html
@@ -36,13 +34,23 @@ SPEAKING_RATE = 1.0
 VOLUME_GAIN_DB = 0.0
 
 
-def synthesize_audio(text: str) -> bytes:
+def _create_tts_client():
+    """Create a Google Cloud TTS client using Application Default Credentials."""
+    from google.cloud import texttospeech
+
+    return texttospeech.TextToSpeechClient()
+
+
+def synthesize_audio(text: str, client=None) -> bytes:
     """Synthesize speech from text using Google Chirp 3 HD.
 
     Uses Application Default Credentials (gcloud auth application-default login).
-    Returns MP3 audio bytes.
+    Returns MP3 audio bytes. Pass a client to reuse across calls.
     """
-    client = texttospeech.TextToSpeechClient()
+    from google.cloud import texttospeech
+
+    if client is None:
+        client = _create_tts_client()
     response = client.synthesize_speech(
         input=texttospeech.SynthesisInput(text=text),
         voice=texttospeech.VoiceSelectionParams(
@@ -174,6 +182,7 @@ def _generate_for_notes(
 ) -> GenerationResult:
     """Run in background thread. Generates TTS audio and updates notes."""
     result = GenerationResult(generated=0, skipped=0, errors=[])
+    client = _create_tts_client()
 
     for note_id in note_ids:
         note = col.get_note(note_id)
@@ -209,8 +218,8 @@ def _generate_for_notes(
 
         if not os.path.exists(filepath):
             try:
-                audio_bytes = synthesize_audio(text)
-                col.media.write_data(filename, audio_bytes)
+                audio_bytes = synthesize_audio(text, client)
+                filename = col.media.write_data(filename, audio_bytes)
             except Exception as e:
                 result.errors.append(f"Note {note_id}: {e}")
                 continue
@@ -259,6 +268,8 @@ def _on_generate_audio(browser) -> None:
             )
         else:
             tooltip(f"TTS done — {', '.join(parts)}", period=3000)
+        # Refresh browser to show updated fields
+        browser.search()
 
     QueryOp(
         parent=browser,
