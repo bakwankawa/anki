@@ -17,7 +17,6 @@ import aqt.browser
 import aqt.editor
 import aqt.forms
 import aqt.operations
-from aqt.generate_tts import init_generate_tts
 from anki._legacy import deprecated
 from anki.cards import Card, CardId
 from anki.collection import Collection, Config, OpChanges, SearchNode
@@ -34,6 +33,7 @@ from aqt import AnkiQt, gui_hooks
 from aqt.editor import Editor, EditorWebView
 from aqt.errors import show_exception
 from aqt.exporting import ExportDialog as LegacyExportDialog
+from aqt.generate_tts import init_generate_tts
 from aqt.import_export.exporting import ExportDialog
 from aqt.operations.card import set_card_deck, set_card_flag
 from aqt.operations.collection import redo, undo
