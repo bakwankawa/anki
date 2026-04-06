@@ -16,7 +16,7 @@ from google.cloud import texttospeech
 from anki.collection import Collection
 from anki.notes import NoteId
 from anki.utils import strip_html
-from aqt import mw
+import aqt
 from aqt.operations import QueryOp
 from aqt.qt import (
     QAction,
@@ -79,21 +79,21 @@ class GenerateTtsConfig:
 
 def _load_api_key() -> str:
     """Load saved API key from profile."""
-    conf = mw.pm.profile.get("generateTts", {})
+    conf = aqt.mw.pm.profile.get("generateTts", {})
     return conf.get("apiKey", "")
 
 
 def _save_api_key(key: str) -> None:
     """Persist API key to profile."""
-    conf = mw.pm.profile.get("generateTts", {})
+    conf = aqt.mw.pm.profile.get("generateTts", {})
     conf["apiKey"] = key
-    mw.pm.profile["generateTts"] = conf
-    mw.pm.save()
+    aqt.mw.pm.profile["generateTts"] = conf
+    aqt.mw.pm.save()
 
 
 def _load_field_prefs(note_type_name: str) -> tuple[str, str]:
     """Load last-used source/dest field names for a note type."""
-    conf = mw.pm.profile.get("generateTts", {})
+    conf = aqt.mw.pm.profile.get("generateTts", {})
     fields = conf.get("fields", {})
     prefs = fields.get(note_type_name, {})
     return prefs.get("source", ""), prefs.get("dest", "")
@@ -101,12 +101,12 @@ def _load_field_prefs(note_type_name: str) -> tuple[str, str]:
 
 def _save_field_prefs(note_type_name: str, source: str, dest: str) -> None:
     """Persist last-used field names for a note type."""
-    conf = mw.pm.profile.get("generateTts", {})
+    conf = aqt.mw.pm.profile.get("generateTts", {})
     fields = conf.get("fields", {})
     fields[note_type_name] = {"source": source, "dest": dest}
     conf["fields"] = fields
-    mw.pm.profile["generateTts"] = conf
-    mw.pm.save()
+    aqt.mw.pm.profile["generateTts"] = conf
+    aqt.mw.pm.save()
 
 
 class GenerateTtsDialog(QDialog):
@@ -280,7 +280,7 @@ def _on_generate_audio(browser) -> None:
         return
 
     # Get field names from the first selected note
-    note = mw.col.get_note(note_ids[0])
+    note = aqt.mw.col.get_note(note_ids[0])
     note_type = note.note_type()
     field_names = [f["name"] for f in note_type["flds"]]
     note_type_name = note_type["name"]
