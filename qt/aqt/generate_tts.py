@@ -10,7 +10,6 @@ import os
 import re
 from dataclasses import dataclass
 
-from google.api_core.client_options import ClientOptions
 from google.cloud import texttospeech
 
 from anki.collection import Collection
@@ -25,8 +24,6 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QLineEdit,
-    QPushButton,
     QVBoxLayout,
     qconnect,
 )
@@ -39,14 +36,13 @@ SPEAKING_RATE = 1.0
 VOLUME_GAIN_DB = 0.0
 
 
-def synthesize_audio(text: str, api_key: str) -> bytes:
+def synthesize_audio(text: str) -> bytes:
     """Synthesize speech from text using Google Chirp 3 HD.
 
+    Uses Application Default Credentials (gcloud auth application-default login).
     Returns MP3 audio bytes.
     """
-    client = texttospeech.TextToSpeechClient(
-        client_options=ClientOptions(api_key=api_key)
-    )
+    client = texttospeech.TextToSpeechClient()
     response = client.synthesize_speech(
         input=texttospeech.SynthesisInput(text=text),
         voice=texttospeech.VoiceSelectionParams(
@@ -73,22 +69,7 @@ def tts_filename(text: str) -> str:
 class GenerateTtsConfig:
     source_field: str
     dest_field: str
-    api_key: str
     skip_existing: bool
-
-
-def _load_api_key() -> str:
-    """Load saved API key from profile."""
-    conf = aqt.mw.pm.profile.get("generateTts", {})
-    return conf.get("apiKey", "")
-
-
-def _save_api_key(key: str) -> None:
-    """Persist API key to profile."""
-    conf = aqt.mw.pm.profile.get("generateTts", {})
-    conf["apiKey"] = key
-    aqt.mw.pm.profile["generateTts"] = conf
-    aqt.mw.pm.save()
 
 
 def _load_field_prefs(note_type_name: str) -> tuple[str, str]:
@@ -142,19 +123,6 @@ class GenerateTtsDialog(QDialog):
         if saved_dest in self._field_names:
             self._dest_combo.setCurrentText(saved_dest)
 
-        # API key
-        self._api_key_edit = QLineEdit()
-        self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self._api_key_edit.setText(_load_api_key())
-        self._api_key_edit.setPlaceholderText("Google Cloud API key")
-
-        api_key_row = QVBoxLayout()
-        api_key_row.addWidget(self._api_key_edit)
-        self._show_key_btn = QPushButton("Show")
-        qconnect(self._show_key_btn.clicked, self._toggle_key_visibility)
-        api_key_row.addWidget(self._show_key_btn)
-        form.addRow("API key:", api_key_row)
-
         # Skip existing
         self._skip_existing = QCheckBox("Skip cards that already have audio")
         self._skip_existing.setChecked(True)
@@ -172,29 +140,15 @@ class GenerateTtsDialog(QDialog):
 
         self.setLayout(layout)
 
-    def _toggle_key_visibility(self) -> None:
-        if self._api_key_edit.echoMode() == QLineEdit.EchoMode.Password:
-            self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Normal)
-            self._show_key_btn.setText("Hide")
-        else:
-            self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-            self._show_key_btn.setText("Show")
-
     def _on_accept(self) -> None:
-        api_key = self._api_key_edit.text().strip()
-        if not api_key:
-            showWarning("Please enter a Google Cloud API key.")
-            return
         source = self._source_combo.currentText()
         dest = self._dest_combo.currentText()
 
-        _save_api_key(api_key)
         _save_field_prefs(self._note_type_name, source, dest)
 
         self._config = GenerateTtsConfig(
             source_field=source,
             dest_field=dest,
-            api_key=api_key,
             skip_existing=self._skip_existing.isChecked(),
         )
         self.accept()
@@ -255,7 +209,7 @@ def _generate_for_notes(
 
         if not os.path.exists(filepath):
             try:
-                audio_bytes = synthesize_audio(text, config.api_key)
+                audio_bytes = synthesize_audio(text)
                 col.media.write_data(filename, audio_bytes)
             except Exception as e:
                 result.errors.append(f"Note {note_id}: {e}")
