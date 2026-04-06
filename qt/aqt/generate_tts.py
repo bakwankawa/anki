@@ -152,6 +152,10 @@ class GenerateTtsDialog(QDialog):
         source = self._source_combo.currentText()
         dest = self._dest_combo.currentText()
 
+        if source == dest:
+            showWarning("Source and destination fields must be different.")
+            return
+
         _save_field_prefs(self._note_type_name, source, dest)
 
         self._config = GenerateTtsConfig(
@@ -189,6 +193,7 @@ def _generate_for_notes(
     result = GenerationResult(generated=0, skipped=0, errors=[])
     client = _create_tts_client()
     total = len(note_ids)
+    media_dir = col.media.dir()
 
     for i, note_id in enumerate(note_ids, 1):
         note = col.get_note(note_id)
@@ -221,11 +226,11 @@ def _generate_for_notes(
             _update_progress(f"Generating audio... {i}/{total}: (skipped)")
             continue
 
-        _update_progress(f"Generating audio... {i}/{total}: {text}")
+        display = text[:60] + "..." if len(text) > 60 else text
+        _update_progress(f"Generating audio... {i}/{total}: {display}")
 
         # Compute filename and check if already in media folder
         filename = tts_filename(text)
-        media_dir = col.media.dir()
         filepath = os.path.join(media_dir, filename)
 
         if not os.path.exists(filepath):
