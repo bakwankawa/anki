@@ -10,10 +10,10 @@ import os
 import re
 from dataclasses import dataclass
 
+import aqt
 from anki.collection import Collection
 from anki.notes import NoteId
 from anki.utils import strip_html
-import aqt
 from aqt.operations import QueryOp
 from aqt.qt import (
     QAction,
