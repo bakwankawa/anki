@@ -175,6 +175,11 @@ class GenerationResult:
     errors: list[str]
 
 
+def _update_progress(label: str) -> None:
+    """Update the progress dialog label from a background thread."""
+    aqt.mw.taskman.run_on_main(lambda: aqt.mw.progress.update(label=label))
+
+
 def _generate_for_notes(
     col: Collection,
     note_ids: list[NoteId],
@@ -183,8 +188,9 @@ def _generate_for_notes(
     """Run in background thread. Generates TTS audio and updates notes."""
     result = GenerationResult(generated=0, skipped=0, errors=[])
     client = _create_tts_client()
+    total = len(note_ids)
 
-    for note_id in note_ids:
+    for i, note_id in enumerate(note_ids, 1):
         note = col.get_note(note_id)
         field_names = [f["name"] for f in note.note_type()["flds"]]
 
@@ -192,11 +198,13 @@ def _generate_for_notes(
             result.errors.append(
                 f"Note {note_id}: missing source field '{config.source_field}'"
             )
+            _update_progress(f"Generating audio... {i}/{total}: (error)")
             continue
         if config.dest_field not in field_names:
             result.errors.append(
                 f"Note {note_id}: missing dest field '{config.dest_field}'"
             )
+            _update_progress(f"Generating audio... {i}/{total}: (error)")
             continue
 
         # Read and clean source text
@@ -204,12 +212,16 @@ def _generate_for_notes(
         text = strip_html(source_html).strip()
         if not text:
             result.skipped += 1
+            _update_progress(f"Generating audio... {i}/{total}: (skipped)")
             continue
 
         # Check for existing audio in destination field
         if config.skip_existing and SOUND_TAG_RE.search(note[config.dest_field]):
             result.skipped += 1
+            _update_progress(f"Generating audio... {i}/{total}: (skipped)")
             continue
+
+        _update_progress(f"Generating audio... {i}/{total}: {text}")
 
         # Compute filename and check if already in media folder
         filename = tts_filename(text)
@@ -222,6 +234,7 @@ def _generate_for_notes(
                 filename = col.media.write_data(filename, audio_bytes)
             except Exception as e:
                 result.errors.append(f"Note {note_id}: {e}")
+                _update_progress(f"Generating audio... {i}/{total}: (error)")
                 continue
 
         # Append sound tag to destination field
