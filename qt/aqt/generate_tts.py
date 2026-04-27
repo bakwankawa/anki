@@ -152,10 +152,6 @@ class GenerateTtsDialog(QDialog):
         source = self._source_combo.currentText()
         dest = self._dest_combo.currentText()
 
-        if source == dest:
-            showWarning("Source and destination fields must be different.")
-            return
-
         _save_field_prefs(self._note_type_name, source, dest)
 
         self._config = GenerateTtsConfig(
